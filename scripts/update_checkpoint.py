@@ -20,9 +20,7 @@ def main():
 
     now = datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')
     summary = (
-        f"- [{now}] Appended checkpoint with rules header and session summary: "
-        "scaffolded docs (PRD, QUICKSTART, dependencies/inventory, PDP), compose/.env example, OPA policy, DB init SQL; fixed diagrams imports "
-        "(CloudBuild stand-in, IAM stand-in, Monitoring/Logging aliases); rendered architecture diagram PNG.\n"
+        f"- [{now}] "
     )
 
     with checkpoint.open('a', encoding='utf-8') as f:
