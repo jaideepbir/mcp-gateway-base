@@ -1,0 +1,8 @@
+checkpoint.md
+# Exclude local absolute paths and workspace noise
+/Users/
+projects/
+!projects/mcp-gateway/
+Dockerfile
+data/
+go.mod
