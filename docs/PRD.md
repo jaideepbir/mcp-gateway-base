@@ -1,6 +1,6 @@
 # MCP Gateway Project PRD
 
-Version: 0.2  
+Version: 0.1  
 Owner: Platform Engineering  
 Status: Draft
 
@@ -10,33 +10,26 @@ Goals
 - Build a production-ready reference implementation that deploys Docker’s MCP Gateway as the front-door for Model Context Protocol tools, with OAuth2.0 + JWT auth, OPA-based policy enforcement, role-based access control (admin, user), structured logging, and auditable tool-call history.
 - Mirror the structure and operational patterns from the existing mcp-server-oauth2.0 project, but replace the custom MCP server with Docker’s maintained MCP Gateway as the core.
 - Provide complete project documentation: dependencies, inventory, environment variables, auth, OPA policy, scaffolding/functions, data models/storage, testing, and logging/observability.
-- Cloud-ready deployment on GCP using Terraform (IaC), including foundational networking, service accounts/roles, secrets, storage bucket(s), managed Postgres (Cloud SQL), and container runtime (GKE or Cloud Run + ancillary services).
 
 Non-Goals
 - Re-implement MCP Gateway functionality (we will configure and extend via composition and policies).
-- Build a full UI; focus is on platform/gateway/policy and integration.
+- UI/portal beyond minimal health/status endpoints; optional downstream apps may integrate later.
 
 Success Criteria
-- docker compose up brings up mcp-gateway, OPA, auth server (or external identity provider), storage (db), and optional sidecars locally.
-- IaC provisions GCP infra (VPC, subnets, NAT, Cloud SQL, Artifact Registry, GKE or Cloud Run, Secret Manager, Cloud Storage bucket, IAM).
-- CI can deploy to a GCP environment from main (manual approval gate).
+- docker compose up brings up mcp-gateway, OPA, auth server (or external identity provider), storage (db), and optional sidecars.
 - AuthN via OAuth2.0 Code flow; JWTs verified at gateway; roles and scopes propagated to OPA.
 - OPA policies enforce per-tool, per-resource, per-tenant RBAC decisions.
 - Tool call history persisted; structured logs emitted and aggregated.
-- Health checks and integration tests pass in CI and on-cloud.
+- Health checks and integration tests pass in CI.
 
 Milestones
 - M1: Baseline compose stack (gateway + OPA + mock auth + db) with health checks.
 - M2: OAuth2.0 + JWT end-to-end with roles and OPA allow/deny for sample tools.
 - M3: Persistence for tool-call history + basic analytics and audit logs.
 - M4: Hardened deployment, docs complete, test suite and policies validated.
-- M5: Cloud foundations in GCP via Terraform; container build/push; deploy to GKE/Cloud Run; secrets/IAM/networking; smoke tests.
 
 References
 - Docker MCP Gateway: https://docs.docker.com/ai/mcp-gateway/
-- OPA: https://www.openpolicyagent.org/
-- Terraform GCP: https://registry.terraform.io/providers/hashicorp/google/latest
-- GCP best practices: VPC, private service access, Cloud NAT, Cloud SQL private IP
 - Prior art (structure/terminology): projects/mcp-server-oauth2.0
 
 ---
@@ -51,46 +44,37 @@ Runtime
 - PostgreSQL 15+ or SQLite (for local dev) for audit and tool-call history
 - Redis (optional) for rate limiting, sessions or pub/sub
 
-Cloud (GCP)
-- Terraform >= 1.6.x
-- Google Cloud SDK (gcloud), authenticated service account with least privilege
-- GCP services: VPC, Cloud NAT, Cloud Router, Artifact Registry, Cloud SQL (Postgres), Secret Manager, Cloud Storage, GKE or Cloud Run, Cloud Logging/Monitoring, Cloud IAM
-
 Auth and Security
 - OAuth2.0 / OIDC Provider (Auth0/Okta/Keycloak/Custom auth-server)
 - JWKS endpoint reachable by the gateway and OPA
-- TLS certificates (GCP-managed via Cloud Load Balancing/Managed Certs or cert-manager on GKE)
-- OPA policy bundle storage (optional in GCS)
+- TLS certificates (reverse proxy layer, production)
 
 Dev Tooling
 - Make, bash, curl, jq
 - pytest or unittest for Python-based tests (if used)
 - k6 or artillery for load tests (optional)
 - opa (CLI) for policy test bundle/validation
-- terraform, tflint, tfsec (optional)
 
 ---
 
 ## 2. Inventory
 
-Directory Structure (proposed additions marked with +)
+Directory Structure (proposed)
 - projects/mcp-gateway/
   - compose/
     - docker-compose.yml
     - .env (local only; example in repo as .env.example)
   - docs/
-    - PRD.md
+    - PRD.md (this doc)
     - dependencies-and-inventory.md
     - architecture-diagram.md
     - QUICKSTART.md
-    - PDP.md
-    - task-tracker.csv
   - services/
     - auth-server/ (optional if using external IdP)
       - Dockerfile
       - requirements.txt
       - app/
-        - main.py
+        - main.py (OAuth2 flows, JWKS, token issuance)
     - opa/
       - policies/
         - mcp/
@@ -99,7 +83,7 @@ Directory Structure (proposed additions marked with +)
     - storage/
       - migrations/ (SQL)
       - init.sql
-    - gateway/ (optional overlays/config for mcp-gateway)
+    - gateway/ (optional overlays/config for mcp-gateway, if supported by env/config files)
   - data/
     - protected/
     - public/
@@ -108,26 +92,6 @@ Directory Structure (proposed additions marked with +)
     - integration/
     - policies/
     - health/
-  - + infra/
-    - + terraform/
-      - + envs/
-        - + dev/
-          - main.tf
-          - variables.tf
-          - outputs.tf
-          - backend.tf (optional)
-          - providers.tf
-        - + staging/
-        - + prod/
-      - + modules/
-        - + network/ (vpc, subnets, nat, router)
-        - + gke/ or cloudrun/
-        - + sql/ (cloud sql postgres)
-        - + artifact_registry/
-        - + iam/
-        - + secrets/ (secret manager)
-        - + storage/ (gcs buckets for logs/policies)
-        - + opa_bundle/ (optional: GCS policy bundle)
   - Makefile
   - README.md
 
@@ -137,18 +101,14 @@ Containers
 - auth-server (dev only): Local OAuth2.0 provider for end-to-end testing if no external IdP available.
 - db: Postgres (prod) or sqlite volume (dev) for audit logs, tool-call history.
 - observability (optional): Loki/Promtail or OpenTelemetry Collector and Tempo/Grafana stack.
-- proxy/ingress (cloud): GCLB/Ingress for GKE; HTTPS Load Balancer with managed certs.
+- proxy (optional): Nginx/Caddy/Traefik in front of gateway for TLS, rate-limits.
 
-Cloud Resources (GCP)
-- VPC with subnets per environment
-- Cloud Router + Cloud NAT for egress
-- Artifact Registry (Docker images)
-- Cloud SQL Postgres with private IP + serverless VPC access
-- GKE Autopilot cluster or Cloud Run services
-- Secret Manager (JWKS URIs, DB credentials, OAuth client secrets)
-- IAM service accounts with least privilege; Workload Identity for pods
-- GCS buckets: logs/exports, OPA policy bundles (optional)
-- Cloud Logging/Monitoring dashboards and alerts
+Apps/Services
+- Gateway (Docker MCP Gateway)
+- OPA policy engine
+- Auth server (optional dev)
+- Tool backends (either internal containers or remote MCP tool providers)
+- Storage for history/logs
 
 ---
 
@@ -171,7 +131,6 @@ MCP Gateway
 - RBAC_ADMIN_GROUP=admin
 - RATE_LIMIT_RPS=20 (optional)
 - HISTORY_DB_DSN=postgresql://user:pass@db:5432/mcp?sslmode=disable or sqlite:///data/history.db
-- OPA_URL=http://opa:8181
 
 OPA
 - OPA_LOG_LEVEL=info
@@ -196,17 +155,6 @@ Database
 Observability
 - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 - LOG_FORMAT=json
-
-Cloud (Terraform variables examples)
-- TF_VAR_project_id
-- TF_VAR_region
-- TF_VAR_env
-- TF_VAR_network_cidr
-- TF_VAR_subnet_cidrs
-- TF_VAR_sql_instance_tier
-- TF_VAR_workload_identity_pool
-- TF_VAR_opa_policy_bucket
-- TF_VAR_artifact_registry_repo
 
 ---
 
@@ -240,7 +188,6 @@ Threat Model
 - JWT replay: short token lifetime + nonce/PKCE + TLS.
 - Token leakage: no tokens in logs; redact; secure storage.
 - Privilege escalation: OPA deny by default; explicit allow; separation of duties.
-- Cloud secrets: Use GCP Secret Manager; never commit secrets; bind via Workload Identity/KMS.
 
 ---
 
@@ -259,19 +206,19 @@ Policy Model (Rego)
     },
     "resource": {
       "tool": "<tool_name>",
-      "action": "<action>",
-      "labels": ["public","sensitive"]
+      "action": "<action>"
     },
-    "env": "dev",
-    "network": {"ip": "10.0.0.5"}
+    "env": "dev"
   }
 
 Decision
 - Default deny; allow when:
   - Valid JWT verified by gateway
   - Role/scope policy allows resource.action
-  - Optional ABAC: data labels + user clearance; time-based, tenant-based
-  - Network-aware decisions (optional)
+  - Optional ABAC: data sensitivity labels + user clearance
+- Fine-grained:
+  - Per-tool, per-action, per-dataset label
+  - Time-based, tenant-based, environment-based rules
 
 Example Rego (snippet)
 /* services/opa/policies/mcp/authz.rego */
@@ -292,51 +239,49 @@ tool_action_allowed {
   scope_allowed(required)
 }
 
-label_requires_admin {
-  "sensitive" in input.resource.labels
-}
-
 allow {
   is_admin
 }
 
 allow {
   tool_action_allowed
-  not label_requires_admin
 }
 
 Testing Policies
-- Use opa test tests/policies to cover allow/deny cases for roles, scopes, labels, and environment.
-
-Policy Distribution (Cloud)
-- Option 1: Mount policies in container (dev)
-- Option 2: OPA bundle in GCS; OPA pulls via bundle URL and IAM creds
+- Use opa test tests/policies to cover allow/deny cases for roles, scopes, and labels.
 
 ---
 
 ## 6. Scaffolding & Functions
 
 Compose Services (high level)
-- mcp-gateway: JWT validation, OPA client, history writer, health endpoints, metrics
-- opa: policy runtime with mounted policies or bundles
-- auth-server (dev optional): token issuance with roles/scopes
-- db: Postgres with init.sql
-- observability: loki/promtail or otel-collector (optional)
+- mcp-gateway:
+  - image: per docs (e.g., docker/mcp-gateway:latest)
+  - ports: "${GATEWAY_PORT}:8080"
+  - env: OAUTH_ISSUER, OAUTH_AUDIENCE, OAUTH_JWKS_URI, HISTORY_DB_DSN, OPA_URL=http://opa:8181
+- opa:
+  - image: openpolicyagent/opa:latest
+  - volumes: ./services/opa/policies:/policies
+  - command: ["run", "--server", "--set=decision_logs.console=true", "/policies"]
+  - healthcheck: http GET /health
+- auth-server (dev optional):
+  - sample OAuth2 provider (FastAPI) issuing JWT with roles/scopes
+- db:
+  - postgres with init.sql creating tables: tool_calls, audit_events, users (optional mirror)
+- observability:
+  - loki/promtail or otel-collector
 
-Cloud Deployment Options
-- GKE Autopilot:
-  - Deploy mcp-gateway, opa, sidecars via Helm or Kustomize
-  - Workload Identity for pod SA to access Secret Manager/GCS
-  - Ingress with GCLB and managed TLS
-  - Cloud SQL Auth Proxy or private IP connector for DB
-- Cloud Run:
-  - Separate services for gateway and opa
-  - VPC connector for Cloud SQL private IP
-  - IAM-based access to Secret Manager and GCS
+Gateway Functions
+- JWT validation middleware
+- Request context enrichment (user, roles, scopes)
+- OPA query client (POST to /v1/data/mcp/authz/allow with input)
+- Decision cache with TTL (optional)
+- History writer (async) to DB
+- Health endpoints: /health, /ready
+- Metrics: /metrics (prometheus format if available)
 
 CLI/Make Commands
-- make up/down/logs/test/policy-test/db-migrate
-- make tf-init/tf-plan/tf-apply (env selectable)
+- make up, make down, make logs, make test, make policy-test, make db-migrate
 
 ---
 
@@ -344,91 +289,100 @@ CLI/Make Commands
 
 Storage Options
 - Dev: SQLite file for simplicity
-- Prod: Cloud SQL Postgres with private IP; optionally read replicas
+- Prod: Postgres
 
 Schema (minimal)
-- tool_calls (see SQL in appendices)
+- tool_calls
+  - id (uuid)
+  - user_sub (text)
+  - tool (text)
+  - action (text)
+  - input_json (jsonb)
+  - output_json (jsonb)
+  - decision (text) -- allow/deny
+  - reason (text) -- policy/role detail
+  - created_at (timestamptz)
+  - trace_id (text)
+
 - audit_events
+  - id (uuid)
+  - user_sub (text)
+  - event_type (text) -- authn_success, authn_fail, policy_deny, policy_allow, error
+  - details_json (jsonb)
+  - created_at (timestamptz)
+
 - users (optional mirror)
+  - sub (pk)
+  - email
+  - roles (text[]) or separate user_roles table
 
 RBAC
-- Role assignment from IdP and/or OPA data
-- Scopes in JWT; OPA enforces role + scope + resource + labels
+- Role assignment sourced from IdP (preferred) and/or mapping in OPA data.
+- Scopes carried in JWT. OPA enforces combination of role + scope + resource.
 
 Data Flow
-1) Client obtains access token from IdP  
-2) Client calls MCP Gateway with Bearer token  
-3) Gateway validates JWT (JWKS)  
-4) Gateway builds OPA input and queries OPA  
-5) OPA returns allow/deny (+ reason)  
-6) Gateway forwards to tool or denies; writes history/audit  
-7) Logs/metrics exported; in cloud, centralized via Cloud Logging/Otel
+1) Client obtains access token from IdP (Auth Code flow).  
+2) Client calls MCP Gateway with Bearer token.  
+3) Gateway validates JWT (JWKS).  
+4) Gateway builds OPA input from request + claims, queries OPA.  
+5) OPA returns allow/deny with optional reason.  
+6) If allowed, gateway forwards to tool; captures result.  
+7) Gateway logs tool-call record and audit event to DB.  
+8) Observability stack ingests logs/metrics.
 
 ---
 
 ## 8. Testing (Health Checks, Test Cases, Policies)
 
 Health Checks
-- Local: /health and /ready; OPA /health; DB connectivity
-- Cloud: Probes on deployments; SLO monitors; uptime checks
+- Gateway: /health (200 up), /ready (dependency checks: JWKS reachable, DB connect, OPA reachable)
+- OPA: GET /health
+- DB: liveness via psql or TCP check
 
 Test Matrix
-- AuthN: valid, expired, wrong aud/iss, bad signature
-- AuthZ: role/scope/label variants; deny-by-default
-- E2E: allow and deny paths with persistence and logs
-- Performance: rate limit and latency
-- Cloud: smoke tests post-deploy; policy bundle fetch; Secret Manager access; Cloud SQL connectivity
+- AuthN:
+  - Valid token, expired token, wrong audience, wrong issuer, invalid signature
+- AuthZ:
+  - user vs admin
+  - missing scope, correct scope, wrong tool/action
+  - data label constraints
+- E2E:
+  - token → gateway → OPA allow → tool → history persisted
+  - token → gateway → OPA deny → 403, audit event written
+- Performance:
+  - Rate limiting behavior
+  - OPA latency and decision cache effectiveness
 
-CI/CD
-- Policy tests via opa
-- Integration tests via docker compose and/or ephemeral clusters
-- Terraform plan + apply with approvals
-- Build, push images to Artifact Registry; deploy to GKE/Cloud Run
+Policy Tests
+- opa test services/opa/policies/mcp/*.rego tests/policies/*.rego
+
+CI
+- Compose profile runs gateway+opa+db+auth-server
+- Run unit + integration + policy tests
+- Produce coverage and policy decision logs snapshots
 
 ---
 
 ## 9. Tool Call History and Logging
 
 Structured Logging
-- JSON logs: timestamp, level, service, trace_id, user_sub (redacted), tool, action, decision, latency, error fields
+- JSON logs with fields:
+  - timestamp, level, service, trace_id, span_id
+  - user_sub (redacted/hashed as policy dictates)
+  - tool, action, decision, latency_ms
+  - error_code, error_message (if any)
 
-Tracing
-- OTEL setup; propagate trace_id across services
+Correlation/Tracing
+- Propagate trace_id across gateway → OPA → tool
+- OTEL support if available; fallback to log correlation
 
 Retention and Privacy
-- PII minimized; redact tokens and sensitive fields
-- Log retention via GCP sinks and bucket lifecycle policies
+- PII minimized; redact tokens; configurable retention
+- Access to audit tables restricted to admin
 
-Analytics
-- Optional exports to GCS parquet and BigQuery for analytics
-- Grafana dashboards or Cloud Monitoring custom dashboards
-
----
-
-## 10. Cloud & Terraform Scope
-
-Terraform Modules (custom or community)
-- network: VPC, subnets, router, NAT
-- gke or cloudrun: cluster or services with IAM bindings
-- sql: Cloud SQL Postgres, user/DB, private IP
-- artifact_registry: Docker repo
-- iam: SAs for workloads with least-privilege IAM roles
-- secrets: Secret Manager entries (DB creds, OAuth secrets)
-- storage: GCS buckets (logs, opa bundles, exports)
-- opa_bundle: optional uploader/build pipeline for policies
-
-Security/IAM
-- Workload Identity to avoid long-lived keys
-- Secret access via least-privilege roles (Secret Manager Secret Accessor)
-- Cloud SQL IAM auth proxy or private IP credentials
-- Artifact Registry reader for deployments
-
-Deployment Flow
-- Build images → push to Artifact Registry
-- Terraform apply infra/env
-- Deploy manifests to GKE or Cloud Run (GitHub Actions)
-- Smoke test and policy verification
-- Promotion from dev to staging/prod via approvals
+Export/Analytics
+- Optional periodic export to parquet for analytics
+- Grafana dashboards for allow/deny rates, top tools, error spikes
 
 ---
 
@@ -482,15 +436,35 @@ services:
 volumes:
   db-data:
 
-B. Migration Init (services/storage/init.sql)
-CREATE TABLE IF NOT EXISTS tool_calls (...);
-CREATE TABLE IF NOT EXISTS audit_events (...);
+B. Example Policy Input (OPA)
+{
+  "method": "POST",
+  "path": "/tools/excel/invoke",
+  "user": {"sub": "abc", "roles": ["user"], "scopes": ["tool:excel:read"]},
+  "resource": {"tool": "excel", "action": "read"},
+  "env": "dev"
+}
 
-C. Terraform High-Level Example (infra/terraform/envs/dev)
-- providers.tf: google and google-beta providers with region/project
-- main.tf: call modules (network, sql, artifact_registry, gke/cloudrun, secrets, storage)
-- variables.tf: project_id, region, env, cidrs, tiers, buckets
-- outputs.tf: endpoint URLs, connection names, SA emails
+C. Migration Init (services/storage/init.sql)
+CREATE TABLE IF NOT EXISTS tool_calls (
+  id uuid PRIMARY KEY,
+  user_sub text,
+  tool text,
+  action text,
+  input_json jsonb,
+  output_json jsonb,
+  decision text,
+  reason text,
+  created_at timestamptz DEFAULT now(),
+  trace_id text
+);
+CREATE TABLE IF NOT EXISTS audit_events (
+  id uuid PRIMARY KEY,
+  user_sub text,
+  event_type text,
+  details_json jsonb,
+  created_at timestamptz DEFAULT now()
+);
 
 ---
 
