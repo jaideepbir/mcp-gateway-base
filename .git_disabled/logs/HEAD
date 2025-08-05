@@ -1,0 +1,7 @@
+0000000000000000000000000000000000000000 a8f6b703214b6b0a40da16f1ed82ce15ceef91a9 Jaideep Bir <JA20325838@LYVD92FVYF.(none)> 1754364574 -0400	clone: from https://github.com/jaideepbir/mcp-gateway-base
+a8f6b703214b6b0a40da16f1ed82ce15ceef91a9 fc7e58f33e09b14cc2cdb9f26ca5cdd55ccb8ba1 Jaideep Singh <jaideepbir@gmail.com> 1754364575 -0400	commit: chore: Remove .gitignore and checkpoint.md
+fc7e58f33e09b14cc2cdb9f26ca5cdd55ccb8ba1 baca68cbaf335558aed83a4357be935e7b7902bc Jaideep Singh <jaideepbir@gmail.com> 1754364681 -0400	commit: chore: Remove .git_disabled directory
+baca68cbaf335558aed83a4357be935e7b7902bc b66fb4eb3333615399dd1638c5f2367871eed7c0 Jaideep Singh <jaideepbir@gmail.com> 1754364765 -0400	commit: feat: Add Makefile with common targets
+b66fb4eb3333615399dd1638c5f2367871eed7c0 fd92f250a420969a22ec3965d30807a06d433364 Jaideep Singh <jaideepbir@gmail.com> 1754364937 -0400	commit: feat: Update task tracker
+fd92f250a420969a22ec3965d30807a06d433364 d8ab7e17642a86b929adbfe1c83f56dd00ae5149 Jaideep Singh <jaideepbir@gmail.com> 1754365163 -0400	commit: chore: Modify checkpoint script to avoid redundant summary
+d8ab7e17642a86b929adbfe1c83f56dd00ae5149 3af8551c0805d6db60713d2e759a03eb499de890 Jaideep Singh <jaideepbir@gmail.com> 1754365220 -0400	commit: feat: Update README with completed Makefile task
