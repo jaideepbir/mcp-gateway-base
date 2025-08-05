@@ -1,9 +1,9 @@
 # Dependencies and Inventory
 
-Version: 0.1  
+Version: 0.2  
 Status: Draft
 
-This document enumerates all dependencies (containers, packages, modules) across the project and provides a complete inventory of components.
+This document enumerates all dependencies (containers, packages, modules) across the project and provides a complete inventory of components for both local and cloud (GCP) deployments.
 
 ## 1. Containers and Services
 
@@ -11,13 +11,14 @@ This document enumerates all dependencies (containers, packages, modules) across
   - Image: docker/mcp-gateway:latest (per Docker MCP Gateway docs)
   - Purpose: Front-door for Model Context Protocol tools; JWT validation; OPA integration; request routing; history logging.
   - Ports: 8080 (internal), exposed via ${GATEWAY_PORT}
-  - Dependencies: OPA, DB, OAuth2 provider (JWKS)
+  - Dependencies: OPA, DB, OAuth2 provider (JWKS), network egress to JWKS/IdP, Secret storage for env in cloud
 
 - opa
   - Image: openpolicyagent/opa:latest (pin to a known version in production)
   - Purpose: Policy Decision Point for RBAC/ABAC
   - Ports: 8181
-  - Volumes: ./services/opa/policies:/policies:ro
+  - Volumes: ./services/opa/policies:/policies:ro (dev) or policy bundles from GCS (cloud)
+  - Optional: Decision logs to stdout or OTEL
 
 - db
   - Image: postgres:15 (dev/prod) or sqlite (dev-only alternative)
@@ -25,6 +26,7 @@ This document enumerates all dependencies (containers, packages, modules) across
   - Ports: 5432
   - Volumes: db-data:/var/lib/postgresql/data
   - Init: ./services/storage/init.sql
+  - Cloud: Cloud SQL Postgres, private IP, serverless VPC access/connector
 
 - auth-server (dev optional)
   - Image: built from ./services/auth-server (FastAPI or similar) or replaced by external IdP
@@ -35,10 +37,10 @@ This document enumerates all dependencies (containers, packages, modules) across
 - observability (optional)
   - otel-collector, loki, promtail, grafana
   - Purpose: Telemetry, central logging, dashboards
+  - Cloud: Cloud Logging/Monitoring; OTEL exporter to GCP
 
-- proxy (optional)
-  - nginx/traefik/caddy
-  - Purpose: TLS termination, rate limiting, headers
+- proxy/ingress (cloud)
+  - GKE Ingress + HTTPS Load Balancer with managed certs, or Cloud Run HTTPS endpoints
 
 ## 2. Application Dependencies (by service)
 
@@ -49,12 +51,15 @@ This document enumerates all dependencies (containers, packages, modules) across
   - OPA decision request to http://opa:8181/v1/data/mcp/authz/allow
   - Persistence to HISTORY_DB_DSN (Postgres or SQLite)
   - Structured logging, health endpoints
-- No local code packages unless we write overlays/wrappers.
+- Cloud specifics:
+  - Secrets via Secret Manager (injected as env or mounted files)
+  - For GKE: Workload Identity for SA; for Cloud Run: service account attached
+  - Connectivity to Cloud SQL via private IP or Cloud SQL Auth Proxy
 
 2.2 opa
 - No application dependencies; pure Rego
-- Rego policies under services/opa/policies/mcp/*.rego
-- Policy tests under tests/policies/*.rego
+- Rego policies under services/opa/policies/mcp/*.rego (dev)
+- Policy bundles optionally stored in GCS bucket (cloud)
 - Tooling:
   - opa CLI (for local testing)
 
@@ -62,16 +67,15 @@ This document enumerates all dependencies (containers, packages, modules) across
 - If implemented with FastAPI (Python 3.11+):
   - fastapi
   - uvicorn[standard]
-  - python-jose[cryptography] (JWT signing/verification)
+  - python-jose[cryptography]
   - pydantic
   - httpx (optional)
-- Or any minimal OAuth2-compliant server implementation
 
 2.4 storage (DB migrations and client)
 - If using alembic (Python) for migrations:
   - alembic
   - psycopg2-binary
-- If using plain SQL migrations:
+- Plain SQL migrations:
   - No runtime deps; psql client for ops
 
 2.5 tests
@@ -81,14 +85,17 @@ This document enumerates all dependencies (containers, packages, modules) across
   - pytest-asyncio (if needed)
 - OPA policy tests:
   - opa (CLI)
+- Load tests (optional):
+  - k6 or artillery
 
 2.6 observability (optional)
 - OpenTelemetry:
-  - otel-collector (container)
+  - otel-collector (container) or native OTEL in services if supported
 - Logging stack:
   - grafana/loki
   - grafana/promtail
   - grafana/grafana
+- Cloud alternative: Cloud Logging/Monitoring dashboards
 
 ## 3. System Tools
 
@@ -96,8 +103,33 @@ This document enumerates all dependencies (containers, packages, modules) across
 - make, bash, curl, jq
 - psql (Postgres client) or sqlite3 (if using SQLite dev)
 - opa (CLI) for policy testing
+- terraform >= 1.6.x
+- gcloud CLI (Google Cloud SDK)
+- tflint, tfsec (optional)
+- yq (optional for CI templating)
 
-## 4. Inventory of Directories
+## 4. Cloud (GCP) Inventory
+
+- VPC with subnets per environment (dev, staging, prod)
+- Cloud Router + Cloud NAT for outbound egress
+- Artifact Registry for Docker images
+- Cloud SQL (Postgres) with private IP
+- Secret Manager for OAuth secrets, DB credentials, JWKS override (if any)
+- GCS buckets:
+  - logs/exports (optional)
+  - opa-policy-bundles (optional)
+- Container runtime:
+  - GKE Autopilot (Workload Identity, Ingress, managed TLS)
+  - or Cloud Run (service-level IAM, VPC connector for private SQL)
+- IAM:
+  - Project-level roles (least privilege)
+  - Service accounts (deploy, runtime)
+  - Workload Identity pool and bindings for GKE
+- Cloud Logging/Monitoring:
+  - Dashboards and alerts
+  - Sinks to bucket/BigQuery (optional)
+
+## 5. Inventory of Directories
 
 - compose/
   - docker-compose.yml
@@ -127,14 +159,30 @@ This document enumerates all dependencies (containers, packages, modules) across
   - architecture-diagram.md
   - QUICKSTART.md
   - PDP.md
+  - task-tracker.csv
 - tests/
   - integration/
   - policies/
   - health/
+- infra/
+  - terraform/
+    - envs/
+      - dev/ (providers.tf, main.tf, variables.tf, outputs.tf, backend.tf)
+      - staging/
+      - prod/
+    - modules/
+      - network/
+      - gke/ or cloudrun/
+      - sql/
+      - artifact_registry/
+      - iam/
+      - secrets/
+      - storage/
+      - opa_bundle/
 - Makefile
 - README.md
 
-## 5. Environment Variables (Summary)
+## 6. Environment Variables (Summary)
 
 - Gateway:
   - GATEWAY_PORT, GATEWAY_LOG_LEVEL, GATEWAY_ALLOWED_ORIGINS
@@ -151,9 +199,14 @@ This document enumerates all dependencies (containers, packages, modules) across
   - POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT
 - Observability:
   - OTEL_EXPORTER_OTLP_ENDPOINT, LOG_FORMAT
+- Terraform inputs:
+  - TF_VAR_project_id, TF_VAR_region, TF_VAR_env, TF_VAR_network_cidr, TF_VAR_subnet_cidrs
+  - TF_VAR_sql_instance_tier, TF_VAR_workload_identity_pool, TF_VAR_opa_policy_bucket, TF_VAR_artifact_registry_repo
 
-## 6. Notes
+## 7. Notes
 
 - Pin image tags for production stability.
 - External IdP can replace dev auth-server; update OAUTH_* vars accordingly.
-- SQLite is acceptable for dev; use Postgres for any multi-user/testing environment.
+- SQLite is acceptable for dev; use Cloud SQL for cloud environments.
+- In cloud, avoid storing secrets in Compose/Manifests; use Secret Manager with IAM-bound access.
+- Prefer OPA policy bundles from GCS in cloud for controlled rollout and versioning.
