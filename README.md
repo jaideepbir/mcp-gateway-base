@@ -27,6 +27,7 @@ See [Quick Start Guide](docs/QUICKSTART.md) for detailed installation and usage 
 - [x] OPA policy implementation
 - [x] Database schema for tool call auditing
 - [x] Environment configuration examples
+- [x] Makefile with common targets
 - **Status: Complete** (2025-08-04)
 
 ### Phase 2: Authentication & Authorization
