@@ -1,0 +1,13 @@
+
+services:
+  opa:
+    image: openpolicyagent/opa:1.7.1
+    ports:
+      - "8182:8181"
+    volumes:
+      - ./services/opa/policies:/policies
+    command: ["run",
+              "--server",
+              "--addr", ":8181",
+              "--set=decision_logs.console=true",
+              "/policies"]
