@@ -1,0 +1,33 @@
+services:
+  - name: local-dev
+    url: http://localhost:8181
+    response_headers:
+      set:
+        - key: Content-Type
+          value: application/json
+
+decision_logs:
+  console: true
+  reporting:
+    min_delay_seconds: 1
+    max_delay_seconds: 5
+
+# Bundle config is documented but disabled by default in dev.
+# To enable later, point to a GCS/HTTP bundle service/endpoints and policy roots.
+bundles:
+  # example-bundle:
+  #   service: gcs-bundles
+  #   resource: bundles/mcp/authz.tar.gz
+  #   persist: true
+  #   polling:
+  #     min_delay_seconds: 10
+  #     max_delay_seconds: 30
+  #   roots:
+  #     - mcp
+
+# Discovery can be used to dynamically configure services/bundles. Not used in dev.
+# discovery:
+#   name: discovery/config
+
+# Set default decision path for convenience (optional).
+# default_decision: /mcp/authz/allow

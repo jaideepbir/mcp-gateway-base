@@ -1,39 +1,23 @@
 version: "3.9"
-services:
-  mcp-gateway:
-    image: docker/mcp-gateway:latest
-    environment:
-      - GATEWAY_LOG_LEVEL=${GATEWAY_LOG_LEVEL}
-      - OAUTH_ISSUER=${OAUTH_ISSUER}
-      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE}
-      - OAUTH_JWKS_URI=${OAUTH_JWKS_URI}
-      - OPA_URL=http://opa:8181
-      - HISTORY_DB_DSN=${HISTORY_DB_DSN}
-    ports:
-      - "${GATEWAY_PORT}:8080"
-    depends_on:
-      - opa
-      - db
 
+services:
   opa:
     image: openpolicyagent/opa:latest
-    command: ["run", "--server", "/policies"]
-    volumes:
-      - ../services/opa/policies:/policies:ro
+    container_name: mcp-gateway-opa
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--config-file=/config/config.yaml"
+      - "/policies"
     ports:
       - "8181:8181"
-
-  db:
-    image: postgres:15
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
-      - db-data:/var/lib/postgresql/data
-      - ../services/storage/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    ports:
-      - "5432:5432"
-
-volumes:
-  db-data:
+      - ../services/opa/policies:/policies:ro
+      - ../services/opa/config.yaml:/config/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health?plugins=true"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
